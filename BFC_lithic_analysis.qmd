@@ -1,0 +1,817 @@
+---
+title: "BFC Lithic Analysis"
+author:
+  - name: "Pei-Yuan Xiao"
+lang: en
+format:
+  html:
+    theme: journal
+    toc: true
+    toc-depth: 3
+    toc-title: "Contents"
+    toc-location: left   
+    number-sections: true
+    fig-width: 8
+    fig-height: 6
+    fig-dpi: 300
+    code-fold: true
+    code-tools: true
+    code-overflow: wrap
+    self-contained: true
+    df-print: kable    
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+## Setup
+
+```{r}
+#| label: setup
+
+library("readxl")
+library("tidyverse")
+library("vegan")
+library("viridis")
+library("emmeans")
+library("DescTools")
+library("patchwork")
+library("ggrepel")
+```
+
+```{r}
+#| label: import-data
+
+BFC_CORES  <- read_excel("BFC_lithic_data.xlsx", sheet = 1)
+BFC_FLAKES <- read_excel("BFC_lithic_data.xlsx", sheet = 2)
+BFC_TOOLS  <- read_excel("BFC_lithic_data.xlsx", sheet = 3)
+BFC_CHUNKS <- read_excel("BFC_lithic_data.xlsx", sheet = 4)
+```
+
+```{r}
+#| label: global-variables
+
+core_order <- c("Initial_core", "Unifacial_core", "Bifacial_core",
+                "Multifacial_core", "Centripetal_core", "Discoidal_core",
+                "Bipolar_on_anvil_core", "Core_on_flake")
+
+flake_order <- c("Cortical_flake", "Unipolar_flake", "Bipolar_flake", "Orthogonal_flake",
+                 "Centripetal_flake", "Naturally_back_flake", "Debordant_flake", "Kombewa_flake",
+                 "Ordinary_flake", "Bipolar_on_anvil_flake")
+
+tool_order <- c("Scraper", "Notch", "Denticulate", "Chopper", "Informal_tool", "Hammerstone")
+
+raw_material_order <- c("Mudstone", "Sandstone", "Silicalite", "Limestone",
+                        "Trachyte", "Andesite", "Granite")
+
+CORTEX_BREAKS <- c(0, 0.2, 0.4, 0.6, 0.8, 1)
+CORTEX_LABELS <- c("0-20%", "20-40%", "40-60%", "60-80%", "80-100%")
+
+backed_flake_types <- c("Debordant_flake", "Naturally_back_flake")
+flake_type_levels  <- c("Cortical_flake", "Unipolar_flake", "Bipolar_flake", "Orthogonal_flake",
+                        "Centripetal_flake", "Backed_flake", "Bipolar_on_anvil_flake")
+
+categorize_cortex <- function(df) {
+  df %>%
+    mutate(Cortex_category = cut(Cortex,
+                                 breaks = CORTEX_BREAKS,
+                                 labels = CORTEX_LABELS,
+                                 include.lowest = TRUE,
+                                 right = FALSE))
+}
+
+plot_theme <- theme(
+  panel.background = element_blank(),
+  panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+  axis.line = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.x = element_text()
+)
+```
+
+------------------------------------------------------------------------
+
+## Overall Descriptive Statistics
+
+```{r}
+#| label: total-count
+
+integration <- function(data) {
+  data %>% select(Raw_material, Type) %>% drop_na()
+}
+
+total_count <- bind_rows(
+  integration(BFC_CORES),
+  integration(BFC_FLAKES),
+  integration(BFC_TOOLS),
+  integration(BFC_CHUNKS)
+)
+
+count(total_count)
+table(total_count)
+```
+
+```{r}
+#| label: fig-raw-material
+#| fig-cap: "Raw material counts"
+
+total_count %>%
+  count(Raw_material) %>%
+  mutate(
+    percentage   = round(n / sum(n) * 100, 2),
+    Raw_material = factor(Raw_material, levels = raw_material_order)
+  ) %>%
+  ggplot(aes(x = Raw_material, y = n, fill = Raw_material)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0("n=", n)), vjust = -0.5) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  labs(x = NULL, y = "Count") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+#| label: fig-type-count
+#| fig-cap: "Artifact type counts"
+
+total_count %>%
+  count(Type) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2), Type = fct_reorder(Type, n)) %>%
+  ggplot(aes(x = Type, y = n, fill = Type)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0("n=", n)), vjust = -0.5) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  labs(x = NULL, y = "Count") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+------------------------------------------------------------------------
+
+## Cores
+
+### Summary Statistics
+
+```{r}
+#| label: core-summary
+
+BFC_CORES %>%
+  group_by(Techno_typology) %>%
+  summarise(
+    n             = n(),
+    Length        = sprintf("%.2f (%.2f)", mean(Length, na.rm = TRUE), sd(Length, na.rm = TRUE)),
+    Width         = sprintf("%.2f (%.2f)", mean(Width, na.rm = TRUE), sd(Width, na.rm = TRUE)),
+    Thickness     = sprintf("%.2f (%.2f)", mean(Thickness, na.rm = TRUE), sd(Thickness, na.rm = TRUE)),
+    Mass          = sprintf("%.2f (%.2f)", mean(Mass, na.rm = TRUE), sd(Mass, na.rm = TRUE)),
+    Flaking_angle = sprintf("%.2f (%.2f)", mean(Flaking_angle, na.rm = TRUE), sd(Flaking_angle, na.rm = TRUE)),
+    N_scar_total  = sprintf("%.2f (%.2f)", mean(N_scar_total, na.rm = TRUE), sd(N_scar_total, na.rm = TRUE))
+  ) %>%
+  mutate(Techno_typology = factor(Techno_typology, levels = core_order)) %>%
+  arrange(Techno_typology)
+```
+
+### Typology Count
+
+```{r}
+#| label: fig-core-typology
+#| fig-cap: "Core typology counts"
+
+BFC_CORES %>%
+  count(Techno_typology) %>%
+  mutate(
+    percentage      = round(n / sum(n) * 100, 2),
+    Techno_typology = factor(Techno_typology, levels = core_order)
+  ) %>%
+  ggplot(aes(x = Techno_typology, y = n, fill = Techno_typology)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0("n=", n)), vjust = -0.3) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  labs(x = NULL, y = "Count") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Dimensions
+
+```{r}
+#| label: fig-core-dimensions
+#| fig-cap: "Core dimensions by typology"
+
+BFC_CORES %>%
+  select(Techno_typology, Length, Width, Thickness) %>%
+  pivot_longer(cols = c(Length, Width, Thickness), names_to = "Dimension", values_to = "Value") %>%
+  drop_na() %>%
+  mutate(
+    Dimension       = factor(Dimension, levels = c("Length", "Width", "Thickness")),
+    Techno_typology = factor(Techno_typology, levels = core_order)
+  ) %>%
+  ggplot(aes(x = fct_reorder(Dimension, Value, .fun = median, .desc = TRUE), y = Value)) +
+  geom_jitter(aes(color = Dimension), width = 0.3, size = 1, alpha = 1) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.2, width = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 2.5, color = "black") +
+  facet_wrap(~ Techno_typology, scales = "fixed", nrow = 2) +
+  labs(x = NULL, y = NULL) +
+  scale_color_brewer(palette = "Pastel1") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 8, face = "bold"))
+```
+
+```{r}
+#| label: fig-core-angle-scar
+#| fig-cap: "Core flaking angle and scar count by typology"
+
+BFC_CORES %>%
+  select(Techno_typology, Flaking_angle, N_scar_total) %>%
+  drop_na() %>%
+  mutate(Techno_typology = factor(Techno_typology, levels = core_order)) %>%
+  pivot_longer(cols = c(Flaking_angle, N_scar_total), names_to = "Variable", values_to = "Value") %>%
+  ggplot(aes(x = Techno_typology, y = Value, color = Techno_typology)) +
+  geom_jitter(width = 0.3, size = 1, alpha = 1) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.2, width = 0.5, color = "black") +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 2.5, color = "black") +
+  facet_wrap(~ Variable, scales = "free_y", nrow = 1) +
+  labs(x = NULL, y = NULL) +
+  scale_color_brewer(palette = "Pastel1") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 10, face = "bold"))
+```
+
+### Techno-organization
+
+```{r}
+#| label: fig-core-techno-org
+#| fig-cap: "Core techno-organization by typology"
+
+TO_order <- c(
+  "Initial_exploitation", "Unifacial_unidirectional", "Unifacial_oppsite",
+  "Unifacial_orthogonal", "Unifacial_semicentripetal", "Unifacial_centripetal",
+  "Bifacial_unidirectional", "Bifacial_bidirection", "Bifacial_multidirection",
+  "Bifacial_centripetal", "Multifacial_bidirection", "Multifacial_multidirection",
+  "Bipolar_on_anvil"
+)
+
+BFC_CORES %>%
+  count(Techno_typology, Techno_organization) %>%
+  group_by(Techno_typology) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  ungroup() %>%
+  mutate(
+    Techno_typology     = factor(Techno_typology, levels = core_order),
+    Techno_organization = factor(Techno_organization, levels = TO_order)
+  ) %>%
+  ggplot(aes(x = Techno_typology, y = percentage, fill = Techno_organization)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_fill_viridis(discrete = TRUE, option = "D") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  plot_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Cortex
+
+```{r}
+#| label: fig-core-cortex
+#| fig-cap: "Core cortex coverage by typology"
+
+BFC_CORES %>%
+  categorize_cortex() %>%
+  count(Techno_typology, Cortex_category) %>%
+  group_by(Techno_typology) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  ungroup() %>%
+  mutate(
+    Techno_typology = factor(Techno_typology, levels = core_order),
+    Cortex_category = factor(Cortex_category, levels = CORTEX_LABELS)
+  ) %>%
+  ggplot(aes(x = Techno_typology, y = percentage, fill = Cortex_category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_fill_viridis_d(option = "D") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  plot_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+------------------------------------------------------------------------
+
+## Flakes
+
+### Summary Statistics
+
+```{r}
+#| label: flake-summary
+
+BFC_FLAKES %>%
+  filter(Type != "Incomplete_flake") %>%
+  group_by(Techno_type) %>%
+  summarise(
+    n             = n(),
+    Length        = sprintf("%.2f (%.2f)", mean(Length, na.rm = TRUE), sd(Length, na.rm = TRUE)),
+    Width         = sprintf("%.2f (%.2f)", mean(Width, na.rm = TRUE), sd(Width, na.rm = TRUE)),
+    Thickness     = sprintf("%.2f (%.2f)", mean(Thickness, na.rm = TRUE), sd(Thickness, na.rm = TRUE)),
+    Mass          = sprintf("%.2f (%.2f)", mean(Mass, na.rm = TRUE), sd(Mass, na.rm = TRUE)),
+    Butt_width    = sprintf("%.2f (%.2f)", mean(Butt_width, na.rm = TRUE), sd(Butt_width, na.rm = TRUE)),
+    Butt_depth    = sprintf("%.2f (%.2f)", mean(Butt_depth, na.rm = TRUE), sd(Butt_depth, na.rm = TRUE)),
+    IPA           = sprintf("%.2f (%.2f)", mean(IPA, na.rm = TRUE), sd(IPA, na.rm = TRUE)),
+    N_dorsal_scar = sprintf("%.2f (%.2f)", mean(N_dorsal_scar, na.rm = TRUE), sd(N_dorsal_scar, na.rm = TRUE))
+  ) %>%
+  mutate(Techno_type = factor(Techno_type, levels = flake_order)) %>%
+  arrange(Techno_type)
+```
+
+### Typology Count
+
+```{r}
+#| label: fig-flake-typology
+#| fig-cap: "Complete flake typology counts"
+
+BFC_FLAKES %>%
+  filter(Type == "Complete_flake") %>%
+  count(Techno_type) %>%
+  mutate(
+    percentage  = round(n / sum(n) * 100, 2),
+    Techno_type = factor(Techno_type, levels = flake_order)
+  ) %>%
+  ggplot(aes(x = Techno_type, y = n, fill = Techno_type)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0("n=", n)), vjust = -0.3) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  labs(x = NULL, y = "Count") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Dimensions
+
+```{r}
+#| label: fig-flake-dimensions
+#| fig-cap: "Flake dimensions by typology"
+
+BFC_FLAKES %>%
+  select(Techno_type, Length, Width, Thickness) %>%
+  filter(!Techno_type %in% c("Kombewa_flake", "Ordinary_flake")) %>%
+  mutate(Techno_type = if_else(Techno_type %in% backed_flake_types, "Backed_flake", Techno_type)) %>%
+  pivot_longer(cols = c(Length, Width, Thickness), names_to = "Dimension", values_to = "Value") %>%
+  drop_na() %>%
+  mutate(
+    Dimension   = factor(Dimension, levels = c("Length", "Width", "Thickness")),
+    Techno_type = factor(Techno_type, levels = flake_type_levels)
+  ) %>%
+  ggplot(aes(x = fct_reorder(Dimension, Value, .fun = median, .desc = TRUE), y = Value)) +
+  geom_jitter(aes(color = Dimension), width = 0.3, size = 1, alpha = 1) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.2, width = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 2.5, color = "black") +
+  facet_wrap(~ Techno_type, scales = "fixed", ncol = 7) +
+  labs(x = NULL, y = NULL) +
+  scale_color_brewer(palette = "Pastel1") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 8, face = "bold"))
+```
+
+### Zingg Classification
+
+```{r}
+#| label: fig-flake-zingg
+#| fig-cap: "Zingg classification of complete flakes"
+
+flake_clean <- BFC_FLAKES %>%
+  filter(Type == "Complete_flake", !Techno_type %in% c("Kombewa_flake", "Ordinary_flake")) %>%
+  mutate(
+    Techno_type = if_else(Techno_type %in% backed_flake_types, "Backed_flake", Techno_type),
+    Techno_type = factor(Techno_type, levels = flake_type_levels)
+  )
+
+hull_data <- flake_clean %>%
+  group_by(Techno_type) %>%
+  slice(chull(Fineness, Elongation)) %>%
+  ungroup()
+
+ggplot(flake_clean, aes(x = Fineness, y = Elongation, color = Techno_type)) +
+  geom_polygon(data = hull_data, aes(fill = Techno_type, group = Techno_type),
+               alpha = 0.15, color = NA, show.legend = FALSE) +
+  geom_point(aes(fill = Techno_type), color = "black", size = 2.5, shape = 21, stroke = 0.3) +
+  geom_vline(xintercept = 0.66, linetype = "dashed", color = "black", linewidth = 0.5) +
+  geom_hline(yintercept = 0.66, linetype = "dashed", color = "black", linewidth = 0.5) +
+  scale_x_continuous(limits = c(0.1, NA), breaks = seq(0, 1, by = 0.1)) +
+  scale_y_continuous(limits = c(0.4, NA), breaks = seq(0, 1, by = 0.1)) +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_fill_viridis(discrete = TRUE, option = "D") +
+  labs(x = "Fineness (Thickness / Width)", y = "Elongation (Width / Length)", color = "Techno_type") +
+  plot_theme +
+  theme(axis.title.x = element_text(size = 12, color = "black"))
+```
+
+### Butt Type by Typology
+
+```{r}
+#| label: fig-flake-butt-typology
+#| fig-cap: "Flake butt type composition by typology"
+
+BFC_FLAKES %>%
+  filter(Type == "Complete_flake") %>%
+  count(Techno_type, Butt_type) %>%
+  group_by(Techno_type) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  ungroup() %>%
+  mutate(Techno_type = factor(Techno_type, levels = flake_order)) %>%
+  ggplot(aes(x = Techno_type, y = percentage, fill = Butt_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_fill_viridis(discrete = TRUE, option = "D") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  plot_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Platform Size
+
+```{r}
+#| label: fig-platform-size
+#| fig-cap: "Platform width vs. depth by flake type"
+
+flake_filtered <- flake_clean %>% filter(Techno_type != "Bipolar_on_anvil_flake")
+
+ggplot(flake_filtered, aes(x = Butt_width, y = Butt_depth, color = Techno_type)) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.5, color = "black") +
+  geom_point(aes(fill = Techno_type), color = "black", size = 2.5, shape = 21, stroke = 0.3, alpha = 0.5) +
+  scale_x_continuous(limits = c(0, NA), breaks = seq(0, 80, by = 10)) +
+  scale_y_continuous(limits = c(0, NA), breaks = seq(0, 60, by = 5)) +
+  scale_color_viridis_d(option = "D") +
+  scale_fill_viridis_d(option = "D") +
+  labs(x = "Platform width (mm)", y = "Platform depth (mm)", color = "Techno_type") +
+  plot_theme +
+  theme(axis.title.x = element_text(size = 12, color = "black")) +
+  facet_wrap(~ Techno_type)
+```
+
+```{r}
+#| label: platform-lm
+
+model <- lm(Butt_depth ~ Butt_width * Techno_type, data = flake_filtered)
+summary(model)
+emtrends(model, pairwise ~ Techno_type, var = "Butt_width")
+```
+
+### Termination
+
+```{r}
+#| label: fig-flake-termination
+#| fig-cap: "Flake termination by typology"
+
+BFC_FLAKES %>%
+  filter(Type == "Complete_flake") %>%
+  count(Techno_type, Termination) %>%
+  group_by(Techno_type) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  ungroup() %>%
+  mutate(Techno_type = factor(Techno_type, levels = flake_order)) %>%
+  ggplot(aes(x = Techno_type, y = percentage, fill = Termination)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_fill_viridis(discrete = TRUE, option = "D") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  plot_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Cortex
+
+```{r}
+#| label: fig-flake-cortex
+#| fig-cap: "Flake cortex coverage by typology"
+
+BFC_FLAKES %>%
+  filter(Type == "Complete_flake") %>%
+  categorize_cortex() %>%
+  count(Techno_type, Cortex_category) %>%
+  group_by(Techno_type) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  ungroup() %>%
+  mutate(
+    Techno_type     = factor(Techno_type, levels = flake_order),
+    Cortex_category = factor(Cortex_category, levels = CORTEX_LABELS)
+  ) %>%
+  ggplot(aes(x = Techno_type, y = percentage, fill = Cortex_category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_fill_viridis_d(option = "D") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  plot_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Incomplete Flakes
+
+```{r}
+#| label: fig-fracture-type
+#| fig-cap: "Fracture types of incomplete flakes"
+
+BFC_FLAKES %>%
+  filter(Type == "Incomplete_flake") %>%
+  count(Fracture_type) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2), Fracture_type = fct_reorder(Fracture_type, n)) %>%
+  ggplot(aes(x = Fracture_type, y = n, fill = Fracture_type)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(percentage, "%")), vjust = -0.3) +
+  labs(x = "Fracture Type", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+## Tools
+
+### Summary Statistics
+
+```{r}
+#| label: tool-summary
+
+BFC_TOOLS %>%
+  group_by(Tool_type) %>%
+  summarise(
+    Length           = sprintf("%.2f (%.2f)", mean(Length, na.rm = TRUE), sd(Length, na.rm = TRUE)),
+    Width            = sprintf("%.2f (%.2f)", mean(Width, na.rm = TRUE), sd(Width, na.rm = TRUE)),
+    Thickness        = sprintf("%.2f (%.2f)", mean(Thickness, na.rm = TRUE), sd(Thickness, na.rm = TRUE)),
+    Mass             = sprintf("%.2f (%.2f)", mean(Mass, na.rm = TRUE), sd(Mass, na.rm = TRUE)),
+    Ave_S_layer      = sprintf("%.2f (%.2f)", mean(Ave_S_layer, na.rm = TRUE), sd(Ave_S_layer, na.rm = TRUE)),
+    Edge_angle_Total = sprintf("%.2f (%.2f)", mean(Edge_angle_Total, na.rm = TRUE), sd(Edge_angle_Total, na.rm = TRUE)),
+    GIUR_Total       = sprintf("%.2f (%.2f)", mean(GIUR_Total, na.rm = TRUE), sd(GIUR_Total, na.rm = TRUE))
+  ) %>%
+  mutate(Tool_type = factor(Tool_type, levels = tool_order)) %>%
+  arrange(Tool_type)
+```
+
+### Typology Count
+
+```{r}
+#| label: fig-tool-typology
+#| fig-cap: "Tool typology counts"
+
+BFC_TOOLS %>%
+  filter(Type == "Tool") %>%
+  count(Tool_type) %>%
+  mutate(
+    percentage = round(n / sum(n) * 100, 2),
+    Tool_type  = factor(Tool_type, levels = tool_order)
+  ) %>%
+  ggplot(aes(x = Tool_type, y = n, fill = Tool_type)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0("n=", n)), vjust = -0.3) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  labs(x = NULL, y = "Count") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Flake Blank Tools
+
+```{r}
+#| label: flake-blank-tools
+
+flake_tools <- BFC_TOOLS %>% filter(Type == "Tool", Blank == "Flake")
+
+flake_tools %>%
+  summarise(
+    n = n(),
+    across(c(Length, Width, Thickness), list(
+      mean = ~ round(mean(.x, na.rm = TRUE), 2),
+      sd   = ~ round(sd(.x, na.rm = TRUE), 2)
+    ), .names = "{.col}_{.fn}")
+  )
+
+flake_tools %>% count(Retouch_direction_1, sort = TRUE)
+flake_tools %>% count(Retouch_location_1, sort = TRUE)
+```
+
+### Tool vs. Complete Flake Size Comparison
+
+```{r}
+#| label: tool-flake-permanova
+
+combined_data <- bind_rows(
+  flake_tools %>% select(Length, Width, Thickness) %>% mutate(Group = "Tool"),
+  BFC_FLAKES %>% filter(Type == "Complete_flake") %>% select(Length, Width, Thickness) %>% mutate(Group = "Complete_flake")
+)
+
+distance_matrix <- dist(combined_data %>% select(Length, Width, Thickness), method = "euclidean")
+group_factor    <- factor(combined_data$Group)
+
+permutest(betadisper(distance_matrix, group_factor), permutations = 9999)
+
+adonis2(
+  formula = combined_data %>% select(Length, Width, Thickness) ~ group_factor,
+  method = "euclidean", permutations = 9999
+)
+```
+
+```{r}
+#| label: fig-tool-flake-size
+#| fig-cap: "Size comparison between retouched and complete flakes"
+
+combined_data %>%
+  pivot_longer(cols = c(Length, Width, Thickness), names_to = "Dimension", values_to = "Value") %>%
+  mutate(Group = recode(Group, "Tool" = "Retouched_flake")) %>%
+  ggplot(aes(x = fct_reorder(Dimension, Value, .fun = median, .desc = TRUE), y = Value)) +
+  geom_jitter(aes(color = Dimension), width = 0.3, size = 1) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.2, width = 0.5) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 2.5, color = "black") +
+  facet_wrap(~ Group, scales = "fixed", nrow = 1) +
+  labs(x = NULL, y = NULL) +
+  scale_color_brewer(palette = "Pastel1") +
+  plot_theme +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 8, face = "bold"))
+```
+
+### Cortex
+
+```{r}
+#| label: fig-tool-cortex
+#| fig-cap: "Tool cortex coverage by type"
+
+BFC_TOOLS %>%
+  filter(Type == "Tool") %>%
+  categorize_cortex() %>%
+  count(Tool_type, Cortex_category) %>%
+  group_by(Tool_type) %>%
+  mutate(percentage = round(n / sum(n) * 100, 2)) %>%
+  ungroup() %>%
+  mutate(
+    Tool_type       = factor(Tool_type, levels = tool_order),
+    Cortex_category = factor(Cortex_category, levels = CORTEX_LABELS)
+  ) %>%
+  ggplot(aes(x = Tool_type, y = percentage, fill = Cortex_category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_fill_viridis_d(option = "D") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  plot_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+------------------------------------------------------------------------
+
+## Layer Comparison (Layers 3, 7, 9)
+
+```{r}
+#| label: layer-filter
+
+target_layers <- c(3, 7, 9)
+
+BFC_CORES_filtered  <- BFC_CORES  %>% filter(Layer %in% target_layers)
+BFC_FLAKES_filtered <- BFC_FLAKES %>% filter(Layer %in% target_layers, Type == "Complete_flake")
+```
+
+### PCA
+
+```{r}
+#| label: pca-function
+
+run_lithic_pca <- function(data, vars, title_label, remove_outliers = TRUE) {
+  pca_data <- data %>% select(Layer, all_of(vars)) %>% na.omit()
+
+  if (remove_outliers) {
+    for (v in vars) {
+      Q1      <- quantile(pca_data[[v]], 0.25)
+      Q3      <- quantile(pca_data[[v]], 0.75)
+      IQR_val <- Q3 - Q1
+      pca_data <- pca_data %>%
+        filter(.data[[v]] >= Q1 - 1.5 * IQR_val, .data[[v]] <= Q3 + 1.5 * IQR_val)
+    }
+  }
+
+  res.pca  <- prcomp(pca_data[, -1], scale. = TRUE)
+  var_exp  <- summary(res.pca)$importance[2, 1:2]
+
+  scores       <- as.data.frame(res.pca$x)
+  scores$Layer <- factor(pca_data$Layer)
+
+  loadings         <- as.data.frame(res.pca$rotation)
+  loadings$varname <- rownames(loadings)
+  loadings$PC1     <- loadings$PC1 * 3
+  loadings$PC2     <- loadings$PC2 * 3
+
+  p_biplot <- ggplot(scores, aes(x = PC1, y = PC2)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey20", linewidth = 0.4) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "grey20", linewidth = 0.4) +
+    stat_ellipse(aes(fill = Layer), geom = "polygon", type = "norm",
+                 level = 0.75, alpha = 0.15, color = NA) +
+    geom_point(aes(fill = Layer), shape = 21, size = 2.5, color = "white", stroke = 0.5, alpha = 0.7) +
+    geom_segment(data = loadings, aes(x = 0, y = 0, xend = PC1, yend = PC2),
+                 arrow = arrow(length = unit(0.15, "cm")),
+                 color = "grey20", linewidth = 0.5, alpha = 0.8) +
+    geom_text_repel(data = loadings, aes(x = PC1, y = PC2, label = varname),
+                    size = 3.5, fontface = "bold.italic",
+                    box.padding = 0.5, segment.color = "grey50") +
+    labs(
+      title = title_label,
+      x = paste0("PC1 (", round(var_exp[1] * 100, 1), "%)"),
+      y = paste0("PC2 (", round(var_exp[2] * 100, 1), "%)")
+    ) +
+    scale_fill_manual(values  = c("#2A4858", "#F19C79", "#94B598")) +
+    scale_color_manual(values = c("#2A4858", "#F19C79", "#94B598")) +
+    theme_minimal() +
+    theme(
+      panel.grid        = element_blank(),
+      panel.border      = element_rect(fill = NA, color = "black", linewidth = 0.7),
+      plot.title        = element_text(hjust = 0, size = 14, face = "bold"),
+      axis.title        = element_text(face = "bold"),
+      legend.position   = "right",
+      legend.background = element_rect(fill = "white", color = NA)
+    )
+
+  return(list(res = res.pca, biplot = p_biplot))
+}
+```
+
+```{r}
+#| label: fig-pca-cores
+#| fig-cap: "PCA biplot — Cores"
+
+pca_cores <- run_lithic_pca(
+  BFC_CORES_filtered,
+  c("Length", "Width", "Thickness", "Mass", "Flaking_angle", "N_scar_total"),
+  "Cores"
+)
+print(pca_cores$biplot)
+```
+
+```{r}
+#| label: fig-pca-flakes
+#| fig-cap: "PCA biplot — Flakes"
+
+pca_flakes <- run_lithic_pca(
+  BFC_FLAKES_filtered,
+  c("Length", "Width", "Thickness", "Mass", "IPA", "N_dorsal_scar", "Butt_width", "Butt_depth"),
+  "Flakes"
+)
+print(pca_flakes$biplot)
+```
+
+------------------------------------------------------------------------
+
+### PCA-based PERMANOVA
+
+```{r}
+#| label: pca-permanova-function
+
+run_pca_permanova <- function(data, vars, title_label, n_pc = NULL, remove_outliers = TRUE) {
+  cat("\n==============================================\n")
+  cat("--- PCA-based PERMANOVA:", title_label, "---")
+  cat("\n==============================================\n")
+
+  clean_data <- data %>% select(Layer, all_of(vars)) %>% na.omit()
+
+  if (remove_outliers) {
+    for (v in vars) {
+      Q1      <- quantile(clean_data[[v]], 0.25)
+      Q3      <- quantile(clean_data[[v]], 0.75)
+      IQR_val <- Q3 - Q1
+      clean_data <- clean_data %>%
+        filter(.data[[v]] >= Q1 - 1.5 * IQR_val, .data[[v]] <= Q3 + 1.5 * IQR_val)
+    }
+  }
+
+  res_pca   <- prcomp(clean_data[, -1], scale. = TRUE)
+  pc_scores <- if (is.null(n_pc)) res_pca$x else res_pca$x[, 1:n_pc]
+
+  dist_matrix <- vegdist(pc_scores, method = "euclidean")
+  meta_data   <- clean_data$Layer
+
+  set.seed(1999)
+  perm_res <- adonis2(dist_matrix ~ meta_data, permutations = 9999)
+  cat("[1] PERMANOVA on PC Scores:\n"); print(perm_res)
+
+  disp_res    <- betadisper(dist_matrix, meta_data)
+  perm_disp_p <- permutest(disp_res, permutations = 9999)
+  cat("\n[2] PERMDISP on PC Scores:\n"); print(perm_disp_p)
+
+  return(list(pca = res_pca, permanova = perm_res, permdisp = disp_res, clean_data = clean_data))
+}
+```
+
+```{r}
+#| label: pca-permanova-cores
+
+run_pca_permanova(
+  BFC_CORES_filtered,
+  c("Length", "Width", "Thickness", "Flaking_angle", "N_scar_total"),
+  "Cores", n_pc = 3
+)
+```
+
+```{r}
+#| label: pca-permanova-flakes
+
+run_pca_permanova(
+  BFC_FLAKES_filtered,
+  c("Length", "Width", "Thickness", "Elongation", "IPA", "N_dorsal_scar", "Butt_width", "Butt_depth"),
+  "Flakes", n_pc = 3
+)
+```
