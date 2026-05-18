@@ -74,38 +74,44 @@ BFC_lithic_analysis/
 The main analysis (`BFC_lithic_analysis.qmd`) covers four artifact categories: **Cores**, **Flakes**, **Tools**, and **Chunks** from Bianfu Cave. The full rendered report is available as `BFC_lithic_analysis.html`.
 
 #### 1. Overall Descriptive Statistics
-- Raw material composition
-- Stone artifact type counts and proportions
+
+-   Raw material composition
+-   Stone artifact type counts and proportions
 
 #### 2. Cores
-- Descriptive statistics (mean ± SD) for Length, Width, Thickness, Mass, Flaking angle, and Total scar count by core type
-- Dimension and attribute box-plots faceted by core type
-- Technological organization patterns stacked by core type
-- Cortex coverage by core type
+
+-   Descriptive statistics (mean ± SD) for Length, Width, Thickness, Mass, Flaking angle, and Total scar count by core type
+-   Dimension and attribute box-plots faceted by core type
+-   Technological organization patterns stacked by core type
+-   Cortex coverage by core type
 
 #### 3. Flakes
-- Descriptive statistics (mean ± SD) for Length, Width, Thickness, Mass, Platform width/depth, Interior Platform Angle (IPA), and Dorsal scar count
-- Typology counts, dorsal scar patterns, and platform type distributions
-- Dimension box-plots by flake type (Debordant and Naturally-backed merged as Backed flake)
-- Zingg classification with convex hulls by flake type
-- Platform size faceted by flake type
-- Termination type and cortex coverage by flake type
+
+-   Descriptive statistics (mean ± SD) for Length, Width, Thickness, Mass, Platform width/depth, Interior Platform Angle (IPA), and Dorsal scar count
+-   Typology counts, dorsal scar patterns, and platform type distributions
+-   Dimension box-plots by flake type (Debordant and Naturally-backed merged as Backed flake)
+-   Zingg classification with convex hulls by flake type
+-   Platform size faceted by flake type
+-   Termination type and cortex coverage by flake type
 
 #### 4. Tools
-- Descriptive statistics (mean ± SD) for Length, Width, Thickness, Mass, Average scar layer, Edge angle, and GIUR
-- Typology counts
-- Retouch direction and location for flake tools
-- **Size comparison** between retouched flakes and complete flakes: PERMDISP + PERMANOVA on Length × Width × Thickness
-- Cortex coverage by tool type
+
+-   Descriptive statistics (mean ± SD) for Length, Width, Thickness, Mass, Average scar layer, Edge angle, and GIUR
+-   Typology counts
+-   Retouch direction and location for flake tools
+-   **Size comparison** between retouched flakes and complete flakes: PERMDISP + PERMANOVA on Length × Width × Thickness
+-   Cortex coverage by tool type
 
 #### 5. Layer Comparison (Layers 3, 7, 9)
-- **PCA biplots** for Cores and Flakes by layer and variable loadings
-  - Cores: Length, Width, Thickness, Mass, Flaking angle, N_scar_total
-  - Flakes: Length, Width, Thickness, Mass, IPA, N_dorsal_scar, Butt_width, Butt_depth
-- **PCA-based PERMANOVA**: inter-layer multivariate differences tested on PC scores, with PERMDISP homogeneity test
+
+-   **PCA biplots** for Cores and Flakes by layer and variable loadings
+    -   Cores: Length, Width, Thickness, Mass, Flaking angle, N_scar_total
+    -   Flakes: Length, Width, Thickness, Mass, IPA, N_dorsal_scar, Butt_width, Butt_depth
+-   **PCA-based PERMANOVA**: inter-layer multivariate differences tested on PC scores, with PERMDISP homogeneity test
 
 #### 6. Spatial Analysis (`BFC_coord.R`)
-- 2D kernel density maps for Stone artifacts and Animal fossils/Bone tools separately, across five layers (L3, L7, L9, L11, L12)
+
+-   2D kernel density maps for Stone artifacts and Animal fossils/Bone tools separately, across five layers (L3, L7, L9, L11, L12)
 
 ------------------------------------------------------------------------
 
