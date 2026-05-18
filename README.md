@@ -18,7 +18,7 @@ This repository contains the data and code associated with our paper currently u
 
 <sup>†</sup> These authors contributed equally.
 
--   <sup>1</sup> *State Key Laboratory of Tibetan Plateau Earth System, Resources and Environment, Institute of Tibetan Plateau Research, Chinese Academy of Sciences, Beijing, 100101, China.*
+-   <sup>1</sup> *State Key Laboratory of Tibetan Plateau Earth System, Environment and Resources, Institute of Tibetan Plateau Research, Chinese Academy of Sciences, Beijing, 100101, China.*
 -   <sup>2</sup> *Yunnan Provincial Institute of Cultural Relics and Archaeology, Kunming, 650206, China.*
 -   <sup>3</sup> *MOE Key Laboratory of Western China's Environmental System, Center for Excellence in Archaeological Science and Cultural Heritage, Lanzhou University, Lanzhou, 730000, China.*
 -   <sup>4</sup> *Key Scientific Research Base on Paleolithic Human Evolution and Paleogenetics, Institute of Vertebrate Paleontology and Paleoanthropology, Chinese Academy of Sciences, Beijing, 100044, China.*
