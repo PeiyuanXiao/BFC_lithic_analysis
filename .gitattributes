@@ -1,0 +1,2 @@
+# Treat rendered analysis reports as generated files for GitHub Linguist.
+*.html linguist-generated=true
